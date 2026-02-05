@@ -1,18 +1,15 @@
-import chalk from "chalk"
 import { exec } from "node:child_process"
 import { promisify } from "node:util"
+import chalk from "chalk"
 
 const execAsync = promisify(exec)
 
-export async function openPlayground(
-	tunnelUrl: string,
-	initialMessage?: string,
-): Promise<void> {
+export async function openPlayground(tunnelUrl: string): Promise<void> {
 	const playgroundUrl = `https://smithery.ai/playground?mcp=${encodeURIComponent(
 		`${tunnelUrl}/mcp`,
-	)}${initialMessage ? `&prompt=${encodeURIComponent(initialMessage)}` : ""}`
+	)}&dev`
 
-	console.log(chalk.cyan(`🔗 Playground: ${playgroundUrl}`))
+	// URL is already displayed in dev-lifecycle.ts, so no need to log it again
 
 	try {
 		const platform = process.platform
@@ -31,8 +28,7 @@ export async function openPlayground(
 		}
 
 		await execAsync(command)
-		console.log(chalk.green("🌐 Opened playground in browser"))
-	} catch (error) {
+	} catch (_error) {
 		console.log(chalk.yellow("Could not open browser automatically"))
 		console.log(chalk.gray("Please open the link manually"))
 	}

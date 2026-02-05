@@ -1,30 +1,33 @@
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import {
 	type CallToolRequest,
-	type JSONRPCError,
-	type JSONRPCMessage,
 	CallToolRequestSchema,
 	ErrorCode,
+	type JSONRPCErrorResponse,
+	type JSONRPCMessage,
 } from "@modelcontextprotocol/sdk/types.js"
-import fetch from "cross-fetch"
 import { pick } from "lodash"
 import { ANALYTICS_ENDPOINT } from "../../constants"
-import { verbose } from "../../logger"
-import { fetchConnection } from "../../registry"
-import type { ServerDetailResponse } from "@smithery/registry/models/components"
-import { getRuntimeEnvironment } from "../../utils/runtime"
-import { handleTransportError, logWithTimestamp } from "./runner-utils.js"
+import { TRANSPORT_CLOSE_TIMEOUT } from "../../constants.js"
+import { verbose } from "../../lib/logger"
 import { getSessionId } from "../../utils/analytics.js"
-import type { ServerConfig } from "../../types/registry"
+import { getRuntimeEnvironment } from "../../utils/runtime"
+import {
+	getAnalyticsConsent,
+	getUserId,
+} from "../../utils/smithery-settings.js"
+import { handleTransportError, logWithTimestamp } from "./utils.js"
 
 type Cleanup = () => Promise<void>
 
 export const createStdioRunner = async (
-	serverDetails: ServerDetailResponse,
-	config: ServerConfig,
+	command: string,
+	args: string[],
+	env: Record<string, string>,
+	serverQualifiedName: string,
 	apiKey: string | undefined,
-	analyticsEnabled: boolean,
 ): Promise<Cleanup> => {
+	const analyticsEnabled = await getAnalyticsConsent()
 	let stdinBuffer = ""
 	let isReady = false
 	let isShuttingDown = false
@@ -48,7 +51,7 @@ export const createStdioRunner = async (
 				const message = JSON.parse(line) as JSONRPCMessage
 
 				// Track tool usage if user consent is given
-				if (analyticsEnabled && apiKey && ANALYTICS_ENDPOINT) {
+				if (analyticsEnabled && ANALYTICS_ENDPOINT) {
 					const { data: toolData, error } = CallToolRequestSchema.safeParse(
 						message,
 					) as {
@@ -59,24 +62,34 @@ export const createStdioRunner = async (
 					if (!error) {
 						const sessionId = getSessionId()
 						// Fire and forget analytics
-						fetch(ANALYTICS_ENDPOINT, {
-							method: "POST",
-							headers: {
-								"Content-Type": "application/json",
-								Authorization: `Bearer ${apiKey}`,
-							},
-							body: JSON.stringify({
-								eventName: "tool_call",
-								payload: {
-									connectionType: "stdio",
-									serverQualifiedName: serverDetails.qualifiedName,
-									toolParams: toolData ? pick(toolData.params, "name") : {},
-								},
-								$session_id: sessionId,
-							}),
-						}).catch((err: Error) => {
-							console.error("[Runner] Analytics error:", err)
-						})
+						;(async () => {
+							try {
+								const userId = await getUserId()
+								const headers: Record<string, string> = {
+									"Content-Type": "application/json",
+								}
+								if (apiKey) {
+									headers.Authorization = `Bearer ${apiKey}`
+								}
+								await fetch(ANALYTICS_ENDPOINT, {
+									method: "POST",
+									headers,
+									body: JSON.stringify({
+										eventName: "tool_call",
+										payload: {
+											connectionType: "stdio",
+											serverQualifiedName,
+											toolParams: toolData ? pick(toolData.params, "name") : {},
+										},
+										$session_id: sessionId,
+										userId,
+									}),
+								})
+							} catch (err) {
+								// Ignore analytics errors
+								verbose(`[Runner] Analytics error: ${err}`)
+							}
+						})()
 					}
 				}
 
@@ -89,24 +102,6 @@ export const createStdioRunner = async (
 
 	const setupTransport = async () => {
 		logWithTimestamp("[Runner] Starting child process setup...")
-		const stdioConnection = serverDetails.connections.find(
-			(conn) => conn.type === "stdio",
-		)
-		if (!stdioConnection) {
-			throw new Error("No STDIO connection found")
-		}
-		// Process config values and fetch server configuration
-		const serverConfig = await fetchConnection(
-			serverDetails.qualifiedName,
-			config,
-			apiKey,
-		)
-
-		if (!serverConfig || "type" in serverConfig) {
-			throw new Error("Failed to get valid stdio server configuration")
-		}
-
-		const { command, args = [], env = {} } = serverConfig
 
 		// Use runtime environment with proper PATH setup
 		const runtimeEnv = getRuntimeEnvironment(env)
@@ -117,7 +112,7 @@ export const createStdioRunner = async (
 		)
 
 		let finalCommand = command
-		let finalArgs = args
+		let finalArgs = args || []
 
 		// Resolve npx path upfront if needed
 		if (finalCommand === "npx") {
@@ -152,7 +147,7 @@ export const createStdioRunner = async (
 		transport.onmessage = (message: JSONRPCMessage) => {
 			try {
 				if ("error" in message && message.error) {
-					const errorMessage = message as JSONRPCError
+					const errorMessage = message as JSONRPCErrorResponse
 					handleTransportError(errorMessage)
 					// For connection closed error, trigger cleanup
 					if (errorMessage.error.code === ErrorCode.ConnectionClosed) {
@@ -228,7 +223,7 @@ export const createStdioRunner = async (
 					new Promise((_, reject) =>
 						setTimeout(
 							() => reject(new Error("Transport close timeout")),
-							3000,
+							TRANSPORT_CLOSE_TIMEOUT,
 						),
 					),
 				])
@@ -245,9 +240,7 @@ export const createStdioRunner = async (
 	const handleExit = async () => {
 		logWithTimestamp("[Runner] Exit handler triggered, starting shutdown...")
 		await cleanup()
-		if (!isShuttingDown) {
-			process.exit(0)
-		}
+		process.exit(0)
 	}
 
 	// Setup event handlers

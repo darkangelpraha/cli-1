@@ -1,57 +1,44 @@
-name: Publish to npm
+# Manual workflow to re-publish to npm in case the automated release failed.
+# Note: Automated publishing is handled by release-please.yml
+name: Publish NPM
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:  # Allows manual triggering
-
-permissions:
-  contents: write
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
         with:
-          fetch-depth: 0
+          node-version: 20
+          cache: 'pnpm'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '18'
-          registry-url: 'https://registry.npmjs.org'
+      - run: pnpm install --frozen-lockfile
 
-      - name: Install dependencies
-        run: npm ci
+      - run: pnpm add -D @biomejs/cli-linux-x64
 
-      - name: Create .env file
-        run: |
-          echo "REGISTRY_ENDPOINT=${{ secrets.REGISTRY_ENDPOINT }}" >> .env
-          echo "ANALYTICS_ENDPOINT=${{ secrets.ANALYTICS_ENDPOINT }}" >> .env
-
-      - name: Build project
-        run: npm run build
-
-      - name: Configure Git
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-      - name: Bump version
-        run: |
-          npm version patch -m "chore: bump version to %s [skip ci]"
-          git push
-          git push --tags
+      - run: pnpm run build
+        env:
+          ANALYTICS_ENDPOINT: ${{ secrets.ANALYTICS_ENDPOINT }}
 
       - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Remove .npmrc created by setup-node (interferes with OIDC)
+          rm -f "$NPM_CONFIG_USERCONFIG"
+          unset NPM_CONFIG_USERCONFIG
+
+          # Install OIDC-compatible npm version locally
+          npm install --prefix ./oidc npm@11.6.2
+
+          # Use pnpm publish with the local npm binary for OIDC auth
+          pnpm publish --npm-path "$(pwd)/oidc/node_modules/.bin/npm" --no-git-checks --provenance --access public

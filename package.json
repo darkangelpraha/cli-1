@@ -1,67 +1,86 @@
 {
 	"name": "@smithery/cli",
-	"version": "1.2.14",
-	"type": "commonjs",
+	"version": "3.12.0",
+	"type": "module",
 	"private": false,
 	"homepage": "https://smithery.ai/",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/smithery-ai/cli.git"
 	},
-	"description": "A NPX command to install and list Model Context Protocols from Smithery",
+	"description": "An NPX command to install and list Model Context Protocols from Smithery",
 	"main": "dist/index.js",
 	"scripts": {
-		"build": "tsc && node build.mjs && chmod +x dist/index.js",
+		"build": "tsc && node build.mjs && shx chmod +x dist/index.js",
 		"start": "node dist/index.js",
-		"test:list": "node --loader ts-node/esm src/index.ts list",
-		"test:install": "node --loader ts-node/esm src/index.ts install",
-		"test:installed": "node --loader ts-node/esm src/index.ts installed",
-		"extract": "node --loader ts-node/esm src/extractors/modelcontextprotocol-extractor.ts",
-		"test:uninstall": "node --loader ts-node/esm src/index.ts uninstall",
-		"prepare": "npm run build",
-		"check": "npx @biomejs/biome check --write --unsafe",
-		"test": "jest"
+		"test:list": "tsx src/index.ts list",
+		"test:install": "tsx src/index.ts install",
+		"test:installed": "tsx src/index.ts installed",
+		"extract": "tsx src/extractors/modelcontextprotocol-extractor.ts",
+		"test:uninstall": "tsx src/index.ts uninstall",
+		"prepare": "pnpm run build",
+		"check": "pnpm exec biome check --write --unsafe",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"knip": "knip"
+	},
+	"packageManager": "pnpm@10.27.0",
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"esbuild",
+			"keytar",
+			"@smithery/api",
+			"workerd"
+		]
 	},
 	"bin": {
-		"cli": "dist/index.js"
+		"smithery": "dist/index.js"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.15.0",
+		"@anthropic-ai/mcpb": "^1.1.1",
+		"@modelcontextprotocol/sdk": "^1.25.3",
 		"@ngrok/ngrok": "^1.5.1",
-		"@smithery/registry": "^0.3.7",
-		"@smithery/sdk": "^1.5.3",
-		"@types/uuid": "^10.0.0",
+		"@smithery/api": "0.37.0",
 		"chalk": "^4.1.2",
+		"cli-spinners": "^3.3.0",
 		"commander": "^14.0.0",
 		"cors": "^2.8.5",
-		"cross-fetch": "^4.1.0",
-		"esbuild": "^0.25.5",
+		"cross-spawn": "^7.0.6",
+		"esbuild": "^0.25.10",
 		"express": "^5.1.0",
+		"fast-glob": "^3.3.3",
+		"flexsearch": "^0.7.43",
 		"inquirer": "^8.2.4",
 		"inquirer-autocomplete-prompt": "^2.0.0",
-		"js-yaml": "^4.1.0",
+		"jsonc-parser": "^3.3.1",
 		"lodash": "^4.17.21",
+		"miniflare": "^4.20260103.0",
 		"ora": "^8.2.0",
+		"shx": "^0.4.0",
 		"uuid": "^11.1.0",
-		"uuidv7": "^1.0.2"
+		"uuidv7": "^1.0.2",
+		"yaml": "^2.3.4",
+		"zod-to-json-schema": "^3.25.1"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^1.5.3",
+		"@biomejs/biome": "2.3.10",
+		"@smithery/sdk": "^4.0.1",
 		"@types/cors": "^2.8.18",
 		"@types/express": "^5.0.2",
 		"@types/inquirer": "^8.2.4",
 		"@types/inquirer-autocomplete-prompt": "^3.0.3",
-		"@types/jest": "^29.5.12",
-		"@types/js-yaml": "^4.0.9",
-		"@types/json-schema": "^7.0.15",
 		"@types/lodash": "^4.17.14",
-		"@types/node": "^14.18.63",
-		"dotenv": "^16.4.7",
-		"jest": "^29.7.0",
-		"ts-jest": "^29.1.2",
-		"ts-node": "^10.9.1",
+		"@types/node": "^20.19.27",
+		"dotenv": "^17.2.2",
+		"knip": "^5.80.0",
 		"tsx": "^4.19.2",
-		"typescript": "^5.0.0"
+		"typescript": "^5.9.3",
+		"vitest": "^3.2.4",
+		"zod": "^4"
+	},
+	"peerDependencies": {
+		"zod": "^3.20.0 || ^4"
 	},
 	"files": [
 		"dist",
@@ -74,9 +93,9 @@
 		}
 	},
 	"engines": {
-		"node": ">=18.0.0"
+		"node": ">=20.0.0"
 	},
 	"optionalDependencies": {
-		"bufferutil": "^4.0.9"
+		"keytar": "^7.9.0"
 	}
 }

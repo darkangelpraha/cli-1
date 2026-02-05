@@ -1,140 +1,125 @@
-# Smithery CLI ![NPM Version](https://img.shields.io/npm/v/%40smithery%2Fcli) ![NPM Downloads](https://img.shields.io/npm/dt/%40smithery%2Fcli)
+# Smithery CLI [![NPM Version](https://img.shields.io/npm/v/%40smithery%2Fcli)](https://www.npmjs.com/package/@smithery/cli) [![NPM Downloads](https://img.shields.io/npm/dt/%40smithery%2Fcli)](https://www.npmjs.com/package/@smithery/cli)
 
-The Smithery registry installer and manager for Model Context Protocol (MCP) servers, designed to be client-agnostic.
+CLI for installing MCP servers and managing cloud connections via [Smithery](https://smithery.ai).
 
-## Requirements
-- NodeJS version 18 or above
-
-## Usage
+## Installation
 
 ```bash
-npx @smithery/cli <command>
+npm install -g @smithery/cli
 ```
+Requires Node.js 20+.
 
-### Available Commands
+## Commands
 
-- `install <package>` - Install a package
-  - `--client <name>` - Specify the AI client
-  - `--config <json>` - Provide configuration data as JSON (skips prompts)
-- `uninstall <package>` - Uninstall a package
-  - `--client <name>` - Specify the AI client
-- `inspect <server-id>` - Inspect a server interactively
-- `run <server-id>` - Run a server
-  - `--config <json>` - Provide configuration for the server
-- `list clients` - List available clients
-- `list servers --client <name>` - List installed servers for specific AI client
-- `login` - Login with an API key (interactive)
-- `dev [entryFile]` - Start development server with hot-reload and tunnel
-  - `--port <port>` - Port to run the server on (default: 8181)
-  - `--key <apikey>` - Provide an API key
-  - `--no-open` - Don't automatically open the playground
-  - `--prompt <prompt>` - Initial message to start the playground with
-  - `-c, --config <path>` - Path to config file (default: auto-detect smithery.config.js)
-- `build [entryFile]` - Build MCP server for production
-  - `-o, --out <outfile>` - Output file path (default: .smithery/index.cjs)
-  - `--transport <type>` - Transport type: shttp or stdio (default: shttp)
-  - `-c, --config <path>` - Path to config file (default: auto-detect smithery.config.js)
-- `playground` - Open MCP playground in browser
-  - `--port <port>` - Port to expose (default: 3000)
-  - `--key <apikey>` - Provide an API key
-  - Can pass command after `--` separator
-- `--help` - Show help message
-- `--verbose` - Show detailed logs for debugging
-
-### Examples
+### Servers
 
 ```bash
-# Install a server (requires --client flag)
-npx @smithery/cli install mcp-obsidian --client claude
-
-# Install a server with pre-configured data (skips prompts)
-npx @smithery/cli install mcp-obsidian --client claude --config '{"vaultPath":"path/to/vault"}'
-
-# Remove a server
-npx @smithery/cli uninstall mcp-obsidian --client claude
-
-# List available clients
-npx @smithery/cli list clients
-
-# List installed servers for claude
-npx @smithery/cli list servers --client claude
-
-# Inspect a specific server from smithery's registry
-npx @smithery/cli inspect mcp-obsidian
-
-# Run a server with configuration
-npx @smithery/cli run mcp-obsidian --config '{"key":"value"}'
-
-# Login and set API key
-npx @smithery/cli login
-
-# Start development server with hot-reload
-npx @smithery/cli dev
-npx @smithery/cli dev server.ts --port 3000
-
-# Build server for production
-npx @smithery/cli build
-npx @smithery/cli build server.ts --out dist/server.cjs --transport stdio
-
-# Open playground in browser
-npx @smithery/cli playground
-npx @smithery/cli playground --port 3001 -- node dist/server.js
-
-# Show help menu
-npx @smithery/cli --help
-
-# Install with verbose logging for debugging
-npx @smithery/cli install mcp-obsidian --client claude --verbose
+smithery install <server>     # Install a server to an AI client
+smithery uninstall <server>   # Remove a server
+smithery list                 # List installed servers
+smithery search [term]        # Search the Smithery registry
+smithery inspect <server>     # Interactive server testing
+smithery run <server>         # Run a server locally
 ```
 
-### Important Notes
+Options: `--client <name>` to skip client selection, `--config <json>` to provide configuration.
 
-- Use `login` command to set your Smithery API key (required for some operations)
-- Remember to restart your AI client after installing or uninstalling servers
-- Use the `inspect` command for interactive server testing
-- Run without arguments to see the help menu
-- Use `--verbose` flag for detailed logs when troubleshooting
-- The `dev` command provides hot-reload for MCP server development
-- Use `playground` to test your MCP servers in an interactive web interface
+### Skills
+
+Browse and install reusable prompt-based skills from the [Smithery Skills Registry](https://smithery.ai/skills).
+
+```bash
+smithery skills search [query]                        # Search skills
+smithery skills install <skill> --agent <name>        # Install a skill
+smithery skills upvote <skill>                        # Upvote a skill
+smithery skills downvote <skill>                      # Downvote a skill
+
+# Reviews
+smithery skills review list <skill>                   # List reviews
+smithery skills review add <skill> --up -b "text"     # Add review + vote
+smithery skills review remove <skill>                 # Remove your review
+smithery skills review upvote <skill> <review-id>     # Upvote a review
+smithery skills review downvote <skill> <review-id>   # Downvote a review
+```
+
+### Namespaces
+
+Discover public namespaces on Smithery.
+
+```bash
+smithery namespace search [query] # Search public namespaces (requires login)
+```
+
+Options: `--limit <n>`, `--has-skills`, `--has-servers`.
+
+### Smithery Connect (Cloud MCP)
+
+Manage cloud-hosted MCP servers via [Smithery Connect](https://smithery.ai).
+
+```bash
+# Namespace context (auto-created on first use)
+smithery namespace list       # List your namespaces
+smithery namespace use <name> # Set current namespace
+smithery namespace show       # Show current namespace
+
+# Server connections
+smithery connect add <url>    # Add MCP server (--name for display name)
+smithery connect list         # List connected servers
+smithery connect remove <id>  # Remove a connection
+
+# Tools
+smithery connect tools [server]     # List tools (all or for specific server)
+smithery connect search <query>     # Fuzzy search tools by intent
+smithery connect call <id> [args]   # Call a tool (format: server/tool-name)
+```
+
+### Development
+
+```bash
+smithery login                # Login with Smithery (OAuth)
+smithery dev [entry]          # Dev server with hot-reload and tunnel
+smithery build [entry]        # Build for production
+smithery playground           # Open interactive testing UI
+```
+
+## Examples
+
+```bash
+# Install a server locally
+smithery install exa --client cursor
+
+# Browse and install skills
+smithery skills search "frontend" --json --page 2    # Paginated results
+smithery skills search --namespace anthropics --json  # Filter by namespace
+smithery skills install anthropics/frontend-design --agent claude-code
+
+# Review and vote on skills
+smithery skills review list anthropics/frontend-design
+smithery skills review add anthropics/frontend-design --up -b "Handles responsive layouts well"
+smithery skills review upvote anthropics/frontend-design 550e8400-e29b-41d4-a716-446655440000
+smithery skills upvote anthropics/frontend-design
+
+# Discover namespaces
+smithery namespace search --has-skills  # Find namespaces with skills
+
+# Cloud MCP workflow
+smithery connect add https://server.smithery.ai/github
+smithery connect search "create issue"
+smithery connect call github/create_issue '{"title":"Bug fix","body":"..."}'
+
+# Development
+smithery dev server.ts --port 3000
+smithery build --out dist/server.cjs
+```
 
 ## Development
 
-This guide will help you get started with developing for @smithery/cli.
-
-### Getting Started
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/smithery-ai/cli
-   cd cli
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Build the project:
-   ```bash
-   npm run build
-   ```
-
-### Development Commands
-
 ```bash
-# List all servers
-npx . list servers
-
-# Inspect a specific server
-npx . inspect <server-id>
-
-# Install a server
-npx . install <server-name> --client <client-name>
-
-# Run with verbose logging
-npx . <command> --verbose
+git clone https://github.com/smithery-ai/cli
+cd cli && pnpm install && pnpm run build
+npx . --help
 ```
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Please submit a Pull Request.

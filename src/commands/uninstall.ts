@@ -1,20 +1,10 @@
-/* remove punycode depreciation warning */
-process.removeAllListeners("warning")
-process.on("warning", (warning) => {
-	if (
-		warning.name === "DeprecationWarning" &&
-		warning.message.includes("punycode")
-	) {
-		return
-	}
-	console.warn(warning)
-})
-
-import type { ValidClient } from "../constants"
-import { promptForRestart } from "../utils/client"
-import { getConfigPath } from "../client-config"
-import { readConfig, writeConfig } from "../client-config"
+import "../utils/suppress-punycode-warning"
 import chalk from "chalk"
+import type { ValidClient } from "../config/clients"
+import { getClientConfiguration } from "../config/clients.js"
+import { readConfig, writeConfig } from "../lib/client-config-io"
+import { deleteConfig } from "../lib/keychain.js"
+import { promptForRestart } from "../utils/client"
 
 /* uninstalls server for given client */
 export async function uninstallServer(
@@ -23,8 +13,8 @@ export async function uninstallServer(
 ): Promise<void> {
 	try {
 		/* check if client is command-type */
-		const configTarget = getConfigPath(client)
-		if (configTarget.type === "command") {
+		const clientConfig = getClientConfiguration(client)
+		if (clientConfig.install.method === "command") {
 			console.log(
 				chalk.yellow(`Uninstallation is currently not supported for ${client}`),
 			)
@@ -36,9 +26,7 @@ export async function uninstallServer(
 
 		/* check if server exists in config */
 		if (!config.mcpServers[qualifiedName]) {
-			console.log(
-				chalk.red(`Server ${qualifiedName} is not installed for ${client}`),
-			)
+			console.log(chalk.red(`${qualifiedName} is not installed for ${client}`))
 			return
 		}
 
@@ -46,8 +34,11 @@ export async function uninstallServer(
 		delete config.mcpServers[qualifiedName]
 		writeConfig(config, client)
 
+		/* remove server config from keychain */
+		await deleteConfig(qualifiedName)
+
 		console.log(
-			chalk.green(`${qualifiedName} successfully uninstalled from ${client}`),
+			chalk.green(`✓ ${qualifiedName} successfully uninstalled from ${client}`),
 		)
 
 		await promptForRestart(client)

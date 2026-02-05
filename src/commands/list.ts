@@ -1,6 +1,10 @@
-import { readConfig, getConfigPath } from "../client-config"
-import { VALID_CLIENTS, type ValidClient } from "../constants"
 import chalk from "chalk"
+import {
+	getClientConfiguration,
+	VALID_CLIENTS,
+	type ValidClient,
+} from "../config/clients"
+import { readConfig } from "../lib/client-config-io"
 
 export async function list(
 	subcommand: string | undefined,
@@ -9,12 +13,14 @@ export async function list(
 	switch (subcommand) {
 		case "clients":
 			console.log(chalk.bold("Available clients:"))
-			VALID_CLIENTS.forEach((client) => console.log(`  ${chalk.green(client)}`))
+			VALID_CLIENTS.forEach((client) => {
+				console.log(`  ${chalk.green(client)}`)
+			})
 			break
 		case "servers": {
 			/* check if client is command-type */
-			const configTarget = getConfigPath(client)
-			if (configTarget.type === "command") {
+			const configTarget = getClientConfiguration(client)
+			if (configTarget.install.method === "command") {
 				console.log(
 					chalk.yellow(
 						`Listing servers is currently not supported for ${client}`,

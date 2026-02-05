@@ -1,103 +1,63 @@
+import { existsSync, mkdirSync, statSync } from "node:fs"
+import { dirname } from "node:path"
 import chalk from "chalk"
 import * as esbuild from "esbuild"
-import { existsSync, mkdirSync, readFileSync } from "node:fs"
-import { dirname, join, resolve } from "node:path"
+import { resolveEntryPoint } from "./config-loader.js"
 
 // TypeScript declarations for global constants injected at build time
-declare const __SMITHERY_SHTTP_BOOTSTRAP__: string
-declare const __SMITHERY_STDIO_BOOTSTRAP__: string
+declare const __SMITHERY_VERSION__: string
+declare const __SHTTP_BOOTSTRAP__: string
+declare const __STDIO_BOOTSTRAP__: string
 
-export interface BuildOptions {
+type BaseBuildOptions = {
 	entryFile?: string
 	outFile?: string
 	watch?: boolean
-	onRebuild?: (result: esbuild.BuildResult) => void
-	production?: boolean
-	transport?: "shttp" | "stdio"
-	configFile?: string // Path to config file
+	onRebuild?: (success: boolean, outputs: string[]) => void
+	minify?: boolean
+	sourceMaps?: boolean
 }
 
 /**
- * Resolves the entry point from package.json or uses provided entryFile
+ * Build options with compile-time validation for bundle mode constraints.
+ *
  */
-function resolveEntryPoint(providedEntry?: string): string {
-	if (providedEntry) {
-		const resolvedPath = resolve(process.cwd(), providedEntry)
-		if (!existsSync(resolvedPath)) {
-			throw new Error(`Entry file not found at ${resolvedPath}`)
-		}
-		return resolvedPath
-	}
-
-	// Read package.json to find entry point
-	const packageJsonPath = join(process.cwd(), "package.json")
-	if (!existsSync(packageJsonPath)) {
-		throw new Error(
-			"No package.json found in current directory. Please run this command from your project root or specify an entry file.",
-		)
-	}
-
-	let packageJson: Record<string, unknown>
-	try {
-		const packageContent = readFileSync(packageJsonPath, "utf-8")
-		packageJson = JSON.parse(packageContent)
-	} catch (error) {
-		throw new Error(`Failed to parse package.json: ${error}`)
-	}
-
-	// Check "module" field (TypeScript entry point)
-	if (!packageJson.module || typeof packageJson.module !== "string") {
-		throw new Error(
-			'No entry point found in package.json. Please define the "module" field:\n' +
-				'  "module": "./src/index.ts"\n' +
-				"Or specify an entry file directly with the command.",
-		)
-	}
-
-	const entryPoint = packageJson.module
-	const resolvedPath = resolve(process.cwd(), entryPoint)
-	if (!existsSync(resolvedPath)) {
-		throw new Error(
-			`Entry file specified in package.json not found at ${resolvedPath}.
-Check that the file exists or update your package.json`,
-		)
-	}
-
-	return resolvedPath
-}
+export type BuildOptions =
+	| (BaseBuildOptions & {
+			// shttp transport: uses user-module (no bootstrap wrapper needed)
+			production?: boolean
+			transport?: "shttp"
+			bundleMode?: "user-module"
+	  })
+	| (BaseBuildOptions & {
+			// stdio transport + scanning: allows user-module (imports module for scanning)
+			production: false
+			transport: "stdio"
+			bundleMode?: "bootstrap" | "user-module"
+	  })
+	| (BaseBuildOptions & {
+			// stdio transport + executable: requires bootstrap (handles CLI parsing & transport)
+			production?: true
+			transport: "stdio"
+			bundleMode?: "bootstrap"
+	  })
 
 /**
- * Load custom esbuild configuration from file
+ * Build MCP server using esbuild
  */
-async function loadCustomConfig(
-	configPath?: string,
-): Promise<Partial<esbuild.BuildOptions>> {
-	const possiblePaths = configPath
-		? [configPath]
-		: ["smithery.config.js", "smithery.config.mjs", "smithery.config.cjs"]
-
-	for (const path of possiblePaths) {
-		const resolvedPath = resolve(process.cwd(), path)
-		if (existsSync(resolvedPath)) {
-			try {
-				// Use dynamic import to support both ESM and CJS
-				const config = await import(resolvedPath)
-				return config.default?.esbuild || config.esbuild || {}
-			} catch (error) {
-				console.warn(`Failed to load config from ${path}:`, error)
-			}
-		}
-	}
-
-	return {}
-}
-
-export async function buildMcpServer(
-	options: BuildOptions = {},
+async function esbuildServer(
+	options: BuildOptions,
+	entryFile: string,
 ): Promise<esbuild.BuildContext | esbuild.BuildResult> {
-	const outFile = options.outFile || ".smithery/index.cjs"
-	const transport = options.transport ?? "shttp"
-	const entryFile = resolveEntryPoint(options.entryFile)
+	const startTime = performance.now()
+	const transport = options.transport || "shttp"
+
+	// shttp = workerd (ESM), stdio = Node.js (CJS with bootstrap)
+	const isStdio = transport === "stdio"
+	const defaultOutFile = isStdio
+		? ".smithery/index.cjs"
+		: ".smithery/bundle/module.js"
+	const outFile = options.outFile || defaultOutFile
 
 	// Create output directory if it doesn't exist
 	const outDir = dirname(outFile)
@@ -105,29 +65,33 @@ export async function buildMcpServer(
 		mkdirSync(outDir, { recursive: true })
 	}
 
+	const transportDisplay = isStdio ? "stdio" : "shttp"
+
 	console.log(
-		chalk.blue(`🔨 Building MCP server with ${transport} transport...`),
+		chalk.dim(
+			`${chalk.bold.italic.hex("#ea580c")("SMITHERY")} ${chalk.bold.italic.hex("#ea580c")(`v${__SMITHERY_VERSION__}`)} Building MCP server for ${chalk.cyan(transportDisplay)}...`,
+		),
 	)
 
-	// Create a unified plugin that handles both dev and production
-	const createBootstrapPlugin = (): esbuild.Plugin => ({
+	// Create a bootstrap plugin for the given transport
+	const createBootstrapPlugin = (type: "stdio" | "shttp"): esbuild.Plugin => ({
 		name: "smithery-bootstrap-plugin",
-		setup(build) {
+		setup(build: esbuild.PluginBuild) {
 			build.onResolve({ filter: /^virtual:bootstrap$/ }, () => ({
 				path: "virtual:bootstrap",
 				namespace: "bootstrap",
 			}))
 
 			build.onLoad({ filter: /.*/, namespace: "bootstrap" }, () => {
-				// Get the bootstrap code
-				const bootstrapCode =
-					transport === "stdio"
-						? __SMITHERY_STDIO_BOOTSTRAP__
-						: __SMITHERY_SHTTP_BOOTSTRAP__
+				const bootstrapSource =
+					type === "stdio" ? __STDIO_BOOTSTRAP__ : __SHTTP_BOOTSTRAP__
 
-				const modifiedBootstrap = bootstrapCode.replace(
-					'require("virtual:user-module")',
-					`require(${JSON.stringify(entryFile)})`,
+				// Replace the user-module import with the actual entry file
+				const pattern = /from\s*["']virtual:user-module["']/g
+
+				const modifiedBootstrap = bootstrapSource.replace(
+					pattern,
+					`from ${JSON.stringify(entryFile)}`,
 				)
 
 				return {
@@ -140,31 +104,38 @@ export async function buildMcpServer(
 	})
 
 	// Common build options
-	const commonOptions: esbuild.BuildOptions = {
+	const shouldMinify = options.minify ?? options.production ?? false
+	const bundleMode = options.bundleMode ?? "bootstrap"
+	// Use bootstrap unless explicitly set to user-module mode
+	const useBootstrap = bundleMode === "bootstrap"
+
+	const buildConfig: esbuild.BuildOptions = {
 		bundle: true,
-		platform: "node",
-		target: "node20",
 		outfile: outFile,
-		sourcemap: "inline",
-		format: "cjs",
-	}
-
-	let buildConfig: esbuild.BuildOptions
-
-	buildConfig = {
-		...commonOptions,
-		entryPoints: ["virtual:bootstrap"],
-		plugins: [createBootstrapPlugin()],
+		minify: shouldMinify,
+		sourcemap: options.sourceMaps ?? !shouldMinify,
+		entryPoints: useBootstrap ? ["virtual:bootstrap"] : [entryFile],
+		plugins: useBootstrap ? [createBootstrapPlugin(transport)] : [],
 		define: {
 			"process.env.NODE_ENV": JSON.stringify(
 				options.production ? "production" : "development",
 			),
 		},
+		...(isStdio
+			? {
+					// stdio: Node.js CJS bundle with bootstrap
+					platform: "node",
+					target: "node20",
+					format: "cjs",
+				}
+			: {
+					// shttp: workerd ESM bundle with Node.js compat
+					platform: "node",
+					target: "esnext",
+					format: "esm",
+					conditions: ["workerd", "worker", "browser"],
+				}),
 	}
-
-	// Load custom config
-	const customConfig = await loadCustomConfig(options.configFile)
-	buildConfig = { ...buildConfig, ...customConfig }
 
 	if (options.watch && options.onRebuild) {
 		// Set up esbuild with watch mode and rebuild plugin
@@ -176,15 +147,17 @@ export async function buildMcpServer(
 					let serverStarted = false
 					build.onEnd((result) => {
 						if (result.errors.length > 0) {
-							console.error(chalk.red("❌ Build error:"), result.errors)
+							console.error(chalk.red("✗ Build error:"), result.errors)
+							options.onRebuild?.(false, [])
 							return
 						}
 						if (!serverStarted) {
-							console.log(chalk.green("✅ Initial build complete"))
+							console.log(chalk.dim(chalk.green("✓ Initial build complete")))
 						} else {
-							console.log(chalk.green("✅ Rebuilt successfully"))
+							console.log(chalk.dim(chalk.green("✓ Built successfully")))
 						}
-						options.onRebuild?.(result)
+						const outputs = result.outputFiles?.map((f) => f.path) || [outFile]
+						options.onRebuild?.(true, outputs)
 						serverStarted = true
 					})
 				},
@@ -197,11 +170,46 @@ export async function buildMcpServer(
 	}
 
 	// Single build
-	const result = await esbuild.build(buildConfig)
-	if (result.errors.length > 0) {
-		console.error(chalk.red("❌ Build failed:"), result.errors)
+	try {
+		const result = await esbuild.build(buildConfig)
+		if (result.errors.length > 0) {
+			console.log(chalk.red("✗ Build failed"))
+			console.error(result.errors)
+			process.exit(1)
+		}
+
+		const endTime = performance.now()
+		const duration = Math.round(endTime - startTime)
+		console.log(chalk.green(`✓ Built MCP server in ${duration}ms`))
+
+		// Display file size info for the output file
+		if (existsSync(outFile)) {
+			const stats = statSync(outFile)
+			const relativePath = outFile.replace(`${process.cwd()}/`, "")
+			const bytes = stats.size
+			const fileSize =
+				bytes < 1024
+					? `${bytes} B`
+					: bytes < 1024 * 1024
+						? `${(bytes / 1024).toFixed(2)} KB`
+						: `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+			const buildMode = shouldMinify ? "" : " (not minified)"
+			console.log(
+				`\n  ${relativePath}  ${chalk.yellow(fileSize)}  ${chalk.gray("(entry point)")}${buildMode}\n`,
+			)
+		}
+
+		return result
+	} catch (error) {
+		console.log(chalk.red("✗ Build failed"))
+		console.error(error)
 		process.exit(1)
 	}
-	console.log(chalk.green("✅ Build complete"))
-	return result
+}
+
+export async function buildServer(
+	options: BuildOptions = {},
+): Promise<esbuild.BuildContext | esbuild.BuildResult> {
+	const entryFile = resolveEntryPoint(options.entryFile)
+	return await esbuildServer(options, entryFile)
 }

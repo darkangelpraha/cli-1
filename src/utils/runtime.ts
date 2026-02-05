@@ -1,25 +1,31 @@
-import type { ConnectionInfo } from "@smithery/registry/models/components"
-import inquirer from "inquirer"
-import chalk from "chalk"
 import { exec } from "node:child_process"
 import { promisify } from "node:util"
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js"
+import { AuthenticationError } from "@smithery/api"
+import type { ServerGetResponse } from "@smithery/api/resources/servers/servers"
+import chalk from "chalk"
+import inquirer from "inquirer"
 import ora from "ora"
-import { verbose } from "../logger"
-import { getApiKey, setApiKey } from "../smithery-config"
+import { verbose } from "../lib/logger"
+import { validateApiKey } from "../lib/registry"
+import { clearApiKey, getApiKey, setApiKey } from "./smithery-settings"
+
+type Connection =
+	| ServerGetResponse.StdioConnection
+	| ServerGetResponse.HTTPConnection
 
 const execAsync = promisify(exec)
 
-export async function checkUVInstalled(): Promise<boolean> {
+async function checkUVInstalled(): Promise<boolean> {
 	try {
 		await execAsync("uvx --version")
 		return true
-	} catch (error) {
+	} catch (_error) {
 		return false
 	}
 }
 
-export async function promptForUVInstall(): Promise<boolean> {
+async function promptForUVInstall(): Promise<boolean> {
 	const { shouldInstall } = await inquirer.prompt<{ shouldInstall: boolean }>([
 		{
 			type: "confirm",
@@ -55,7 +61,7 @@ export async function promptForUVInstall(): Promise<boolean> {
 
 		spinner.succeed("✓ UV installed successfully")
 		return true
-	} catch (error) {
+	} catch (_error) {
 		spinner.fail(
 			"Failed to install UV. You can install it manually from https://astral.sh/uv",
 		)
@@ -63,7 +69,7 @@ export async function promptForUVInstall(): Promise<boolean> {
 	}
 }
 
-export function isUVRequired(connection: ConnectionInfo): boolean {
+function isUVRequired(connection: Connection): boolean {
 	// Check for stdio connection with uvx in stdioFunction
 	if (
 		connection.type === "stdio" &&
@@ -75,16 +81,16 @@ export function isUVRequired(connection: ConnectionInfo): boolean {
 	return false
 }
 
-export async function checkBunInstalled(): Promise<boolean> {
+async function checkBunInstalled(): Promise<boolean> {
 	try {
 		await execAsync("bun --version")
 		return true
-	} catch (error) {
+	} catch (_error) {
 		return false
 	}
 }
 
-export async function promptForBunInstall(): Promise<boolean> {
+async function promptForBunInstall(): Promise<boolean> {
 	const { shouldInstall } = await inquirer.prompt<{ shouldInstall: boolean }>([
 		{
 			type: "confirm",
@@ -113,7 +119,7 @@ export async function promptForBunInstall(): Promise<boolean> {
 			try {
 				console.log("Attempting to install Bun via Homebrew...")
 				await execAsync("brew install oven-sh/bun/bun")
-			} catch (brewError) {
+			} catch (_brewError) {
 				console.log(
 					"Homebrew installation failed, trying direct installation...",
 				)
@@ -133,7 +139,7 @@ export async function promptForBunInstall(): Promise<boolean> {
 	}
 }
 
-export function isBunRequired(connection: ConnectionInfo): boolean {
+function isBunRequired(connection: Connection): boolean {
 	// Check for stdio connection with uvx in stdioFunction
 	if (
 		connection.type === "stdio" &&
@@ -161,9 +167,7 @@ export function getRuntimeEnvironment(
  * @param connection The connection details to check
  * @returns Promise<void>
  */
-export async function ensureUVInstalled(
-	connection: ConnectionInfo,
-): Promise<void> {
+export async function ensureUVInstalled(connection: Connection): Promise<void> {
 	if (isUVRequired(connection)) {
 		verbose("UV installation check required")
 		const uvInstalled = await checkUVInstalled()
@@ -184,7 +188,7 @@ export async function ensureUVInstalled(
  * @returns Promise<void>
  */
 export async function ensureBunInstalled(
-	connection: ConnectionInfo,
+	connection: Connection,
 ): Promise<void> {
 	if (isBunRequired(connection)) {
 		verbose("Bun installation check required")
@@ -207,8 +211,8 @@ export async function ensureBunInstalled(
  * @param server The server information containing connection details
  * @returns boolean indicating if the server is remote
  */
-export function isRemote(server: {
-	connections: ConnectionInfo[]
+function isRemote(server: {
+	connections: Connection[]
 	remote?: boolean
 }): boolean {
 	return (
@@ -224,7 +228,7 @@ export function isRemote(server: {
  * @returns boolean indicating if the server is remote
  */
 export function checkAndNotifyRemoteServer(server: {
-	connections: ConnectionInfo[]
+	connections: Connection[]
 	remote?: boolean
 }): boolean {
 	const remote = isRemote(server)
@@ -232,9 +236,7 @@ export function checkAndNotifyRemoteServer(server: {
 	if (remote) {
 		verbose("Remote server detected, showing security notice")
 		console.log(
-			chalk.blue(
-				`Installing remote server. Please ensure you trust the server author, especially when sharing sensitive data.\nFor information on Smithery's data policy, please visit: ${chalk.underline("https://smithery.ai/docs/data-policy")}`,
-			),
+			`${chalk.yellow("*")} ${chalk.dim("Installing remote server. Please ensure you trust the server author, especially when sharing sensitive data.")}`,
 		)
 	}
 
@@ -245,7 +247,7 @@ export function checkAndNotifyRemoteServer(server: {
  * Prompts the user for their Smithery API key
  * @returns Promise<string> The entered API key
  */
-export async function promptForApiKey(): Promise<string> {
+async function promptForApiKey(): Promise<string> {
 	const { apiKey } = await inquirer.prompt([
 		{
 			type: "password",
@@ -264,34 +266,69 @@ export async function promptForApiKey(): Promise<string> {
 }
 
 /**
- * Ensures that an API key is available, prompting the user if not provided
+ * Ensures that an API key is available, validating it and prompting the user if invalid or missing
  * @param apiKey - Optional API key that may have been provided via command line
- * @returns Promise<string> The API key (either provided or prompted)
+ * @returns Promise<string> The validated API key
  */
 export async function ensureApiKey(apiKey?: string): Promise<string> {
-	// If API key provided via command line, use it
+	// Check if API key exists
+	let existingApiKey: string | undefined
+
 	if (apiKey) {
-		return apiKey
+		// API key provided via command line
+		existingApiKey = apiKey
+	} else {
+		// Check if API key exists in config
+		existingApiKey = await getApiKey()
 	}
 
-	// Check if API key exists in config
-	const savedApiKey = await getApiKey()
-	if (savedApiKey) {
-		return savedApiKey
+	// If no API key found, prompt for one and set it as existing
+	if (!existingApiKey) {
+		const promptedApiKey = await promptForApiKey()
+		await setApiKey(promptedApiKey)
+		existingApiKey = promptedApiKey
 	}
 
-	// Prompt user for API key and save it
-	const promptedApiKey = await promptForApiKey()
+	// Validate the existing API key
+	try {
+		await validateApiKey(existingApiKey)
+		// API key is valid, return it
+		return existingApiKey
+	} catch (error) {
+		// Handle invalid API key (401 error)
+		if (error instanceof AuthenticationError) {
+			console.error(
+				chalk.red("✗ Invalid API key detected. Please enter a valid API key."),
+			)
 
-	// Save the API key to config for future use
-	const saveResult = await setApiKey(promptedApiKey)
-	if (!saveResult.success) {
-		console.warn(
-			chalk.yellow(
-				"Warning: Could not save API key to config. You may need to enter it again next time.",
-			),
-		)
+			// Clear invalid saved key if it was from config (not command line)
+			if (!apiKey) {
+				await clearApiKey()
+			}
+
+			// Prompt for new API key, validate, and save
+			const promptedApiKey = await promptForApiKey()
+
+			try {
+				await validateApiKey(promptedApiKey)
+			} catch (validationError) {
+				if (validationError instanceof AuthenticationError) {
+					console.error(
+						chalk.red(
+							"✗ Invalid API key. Please check your API key and try again.",
+						),
+					)
+					throw validationError
+				}
+				// Re-throw other errors (network, timeout, etc.)
+				throw validationError
+			}
+
+			await setApiKey(promptedApiKey)
+			return promptedApiKey
+		}
+
+		// Re-throw other errors (network, timeout, etc.) - don't prompt for new key
+		throw error
 	}
-
-	return promptedApiKey
 }

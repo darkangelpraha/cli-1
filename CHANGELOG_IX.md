@@ -4,6 +4,215 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## [3.12.0](https://github.com/smithery-ai/cli/compare/v3.11.0...v3.12.0) (2026-02-05)
+
+
+### Features
+
+* add --headers option to connect add/set commands ([#581](https://github.com/smithery-ai/cli/issues/581)) ([da2856d](https://github.com/smithery-ai/cli/commit/da2856d77f766d72655e668d3063381d30c793e2))
+
+
+### Bug Fixes
+
+* remove unused --print-link option from login command ([#583](https://github.com/smithery-ai/cli/issues/583)) ([9a5b830](https://github.com/smithery-ai/cli/commit/9a5b830fcfc55e855c97a4c2e881c1beadb19753))
+
+## [3.11.0](https://github.com/smithery-ai/cli/compare/v3.10.1...v3.11.0) (2026-02-05)
+
+### Features
+
+* improve review add UX with GitHub-style syntax ([#580](https://github.com/smithery-ai/cli/issues/580)) ([52aeb1d](https://github.com/smithery-ai/cli/commit/52aeb1df451167854ae2c0a346b37d9b1dec656f))
+
+
+## [3.10.0](https://github.com/smithery-ai/cli/compare/v3.9.0...v3.10.0) (2026-02-04)
+
+
+### Features
+
+* add comprehensive Smithery CLI skill [SMI-1367] ([#562](https://github.com/smithery-ai/cli/issues/562)) ([04ace79](https://github.com/smithery-ai/cli/commit/04ace79f9ceba978015e1882c302055028f90493))
+* add logout command to remove all local credentials ([#574](https://github.com/smithery-ai/cli/issues/574)) ([1d6db88](https://github.com/smithery-ai/cli/commit/1d6db88c2e315a04db44001b97b165f65aaf64ee))
+* add skills review and vote commands ([#568](https://github.com/smithery-ai/cli/issues/568)) ([9251cfd](https://github.com/smithery-ai/cli/commit/9251cfdd4b400667e6193d0ba2b23f12c318ee94))
+* redesign skills review and vote CLI with gh-style commands ([#572](https://github.com/smithery-ai/cli/issues/572)) ([6463e37](https://github.com/smithery-ai/cli/commit/6463e37383b8b8d86d8ee286ca819f1b3b135e8d))
+
+
+### Refactors
+
+* use @smithery/api client for skills reviews ([#570](https://github.com/smithery-ai/cli/issues/570)) ([38957aa](https://github.com/smithery-ai/cli/commit/38957aa44b38e6c62390ffbc8c1aa25540e80bb1))
+
+## [3.9.1](https://github.com/smithery-ai/cli/compare/v3.9.0...v3.9.1) (2026-02-05)
+
+### Changed
+
+* refactor skills review commands to use @smithery/api client instead of raw fetch ([#570](https://github.com/smithery-ai/cli/issues/570))
+* update @smithery/api from 0.36.0 to 0.37.0
+
+## [3.9.0](https://github.com/smithery-ai/cli/compare/v3.8.2...v3.9.0) (2026-02-04)
+
+### Features
+
+* add skills search and install commands ([#550](https://github.com/smithery-ai/cli/issues/550)) ([2b1c2db](https://github.com/smithery-ai/cli/commit/2b1c2db55a8e88c0e4720090ba6d3852c89fdea0))
+  - `smithery skills search [query]` - interactive skill search and browsing
+  - `smithery skills install <skill> --agent <name>` - install skills via Vercel Labs skills CLI
+  - `smithery skills agents` - list available agents for installation
+  - `smithery namespace search [query]` - search public namespaces
+  - Options: `--json`, `--limit`, `--namespace`, `-g/--global`
+* add skills review commands
+  - `smithery skills reviews <skill>` - list reviews for a skill
+  - `smithery skills review <skill>` - submit a text review (requires login)
+  - `smithery skills review <skill> --delete` - delete your review
+  - `smithery skills vote <skill> <review-id> --up|--down` - upvote/downvote a review
+  - Options: `--json`, `--limit`, `--page`, `-t/--text`, `-m/--model`
+* add `--page` option to `smithery skills search` for pagination
+* add `--print-link` option to `smithery login` for agent-friendly authentication (prints URL without spinners/browser)
+* add custom ID and metadata support to connect command ([#558](https://github.com/smithery-ai/cli/issues/558)) ([11c1484](https://github.com/smithery-ai/cli/commit/11c1484a6dcec5bc5ae3dbb2d07ade5ac8df748f))
+
+### Bug Fixes
+
+* use MCP client for listing tools instead of raw HTTP; ref SMI-1260 ([#563](https://github.com/smithery-ai/cli/issues/563)) ([79cb44d](https://github.com/smithery-ai/cli/commit/79cb44d9d66a3fdd01aef827c54a6072d5ab3145))
+* upgrade @smithery/api and use new createConnection API ([#561](https://github.com/smithery-ai/cli/issues/561)) ([9241b59](https://github.com/smithery-ai/cli/commit/9241b59))
+* allow SDK client to work without API key ([#556](https://github.com/smithery-ai/cli/issues/556)) ([d883dbe](https://github.com/smithery-ai/cli/commit/d883dbe7a6f8b6b9326ea7e6d2d55eeb989388ea))
+* publish to npm in release-please workflow ([#565](https://github.com/smithery-ai/cli/issues/565)) ([94b3cdc](https://github.com/smithery-ai/cli/commit/94b3cdc0a7c401bd03003eff1ede550a4ee6cdf1))
+
+### Performance Improvements
+
+* lazy load command implementations to improve CLI startup ([#560](https://github.com/smithery-ai/cli/issues/560)) ([1f4a0e4](https://github.com/smithery-ai/cli/commit/1f4a0e49a4c665d360cd2e03d4887bf3f359f072))
+
+### Tests
+
+* add tests for public API patterns (skills and registry) ([#566](https://github.com/smithery-ai/cli/issues/566)) ([e394217](https://github.com/smithery-ai/cli/commit/e394217c1980b59804991f846b1eb33df67b3bf3))
+
+## [3.5.0] - 2026-01-28
+
+### Added
+- `--config-schema` flag for `publish` command to specify JSON Schema for external URL servers (inline JSON or path to .json file)
+- Post-publish tip suggesting `--config-schema` for external URL publishes without configuration
+
+### Changed
+- Renamed `deploy` command to `publish` (`deploy` remains as deprecated alias with warning)
+- Consolidated CLI utilities into `cli-utils.ts` (qualified-name parsing, config masking, JSON parsing)
+
+## [3.4.0] - 2025-01-27
+
+### Added
+- Asset bundling support for stdio deploys via `build.assets` field in `smithery.yaml` - allows including non-code files (data files, templates, configs) in MCPB bundles using glob patterns (#524)
+
+## [3.3.3] - 2025-01-26
+
+### Fixed
+- Fixed qualified name parsing - simple names like `linear` now consistently resolve with `namespace="linear"` instead of empty namespace
+
+### Changed
+- Refactored `resolveServer()` to accept `{ namespace, serverName }` instead of qualified name string - callers now use centralized `parseQualifiedName()` utility
+
+### Added
+- New `parseQualifiedName()` utility in `src/utils/qualified-name.ts` for consistent qualified name parsing across the codebase
+- Unit tests for qualified name parsing
+
+## [2.0.0] - 2025-12-21
+
+### Changed
+- **BREAKING**: Store server configurations in OS keychain instead of remote storage for local servers. Configurations are now stored securely on the user's local machine using the system keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- **BREAKING**: Remote server configuration handling - OAuth-capable clients now use direct HTTP URLs without API keys. Configuration is handled through OAuth flow instead of CLI prompts
+- For clients that don't support OAuth but need HTTP servers, use `mcp-remote` as a fallback transport
+- Simplified server resolution API - removed `ResolveServerSource` enum and `apiKey` parameter from `resolveServer()` function
+- Refactored configuration handling - split `session-config.ts` into focused modules: `user-config.ts` for config resolution and `server-config.ts` for server configuration formatting
+- Updated `run` command to load configurations from keychain instead of remote storage
+
+### Added
+- OS keychain integration using `keytar` library for secure local configuration storage
+- New `keychain.ts` module with `saveConfig()`, `getConfig()`, and `deleteConfig()` functions
+- `mcp-remote` integration for non-OAuth clients connecting to HTTP servers
+- Test coverage for user configuration resolution, server configuration formatting, and client configuration I/O operations
+- Support for HTTP URL key customization (`httpUrlKey`), HTTP type overrides (`httpType`), and format descriptor support for client-specific configuration formats
+
+### Removed
+- Remote configuration storage for local servers
+- `session-config.ts` module (functionality moved to `user-config.ts` and `server-config.ts`)
+- Widget-related code (`widget-bundler.ts`, `widget-discovery.ts`, `widget-validation.ts`)
+- Old test files (`install.test.ts`, `installation-flow.test.ts`, `registry.test.ts`, `config-to-args.test.ts`)
+- `config-to-args.ts` utility (functionality integrated into other modules)
+
+## [1.5.2] - 2025-10-14
+
+### Fixed
+- Fixed integration tests to use actual resolution functions instead of custom mocks in `prepare-stdio-connection.test.ts`
+- Replaced subprocess calls to `npx @anthropic-ai/mcpb unpack` with direct imports from `@anthropic-ai/mcpb` library for better reliability and performance
+- Improved stdio command creation for bundles to properly resolve environment variables and arguments from manifest.json using actual template resolution functions
+
+### Added
+- Tests for bundle manager covering template resolution, manifest parsing, and error conditions
+
+## [1.5.0] - 2025-10-13
+
+### Added
+- Configuration validation flow during server installation with saved config detection
+- Profile support across all configuration endpoints
+- New tests covering installation flows and registry API calls
+
+### Changed
+- Updated configuration validation endpoint from `/config/:id/validate` to `/config/status/:id` for better semantics
+- Improved configuration prompting: required fields first, then optional fields
+- Enhanced installation UX with better messaging and visual indicators
+
+### Fixed
+- Fixed URL encoding bug for server names
+- Fixed route pattern conflict in registry validation endpoint
+- Fixed profile parameter not being passed to config operations
+
+## [1.4.1] - 2025-09-27
+
+### Added
+- Integration tests for stateful/stateless server behavior validation
+
+### Fixed
+- Fixed config schema not being passed into server bundle
+
+## [1.4.0] - TBD
+
+### Added
+- OAuth support
+
+## [1.3.0] - 2025-09-12
+
+### Added
+- Created shared `cleanupChildProcess` utility for consistent process cleanup across commands
+- Added bun bundler support in addition to esbuild - detected automatically at runtime with optional override with `--tool` option (note: only when using bun runtime for esbuild bundle; node doesn't allow bun api)
+
+### Changed
+- Updated Biome from v1.5.3 to v2.2.4 for better cross-platform binary support
+- Updated biome.jsonc configuration for v2 compatibility
+- Updated Node.js requirement from >=18.0.0 to >=20.0.0 to match dependency requirements
+- Updated GitHub Actions to use Node.js 20
+- Refactored `dev`, `playground`, and `uplink` commands to use shared child process cleanup utility
+- Changed default output format from CommonJS to ESM modules
+- Removed npm cache configuration from GitHub Actions workflows to resolve build issues
+
+### Fixed
+- Resolved `Cannot find module '@biomejs/cli-linux-x64/biome'` CI error
+- Improve error handling in child process cleanup
+- Improve race condition handling in process exit
+- Fixed CI/CD build issues by removing npm cache configuration from workflow
+
+## [1.2.29] - 2025-09-12
+
+### Changed
+- Refactored CLI command prompts by extracting prompt utilities from main index file to `src/utils/command-prompts.ts`
+- Cleaned up unused dependencies: removed `@types/uuid` and `bufferutil` optional dependency
+- Improved code organization and maintainability of CLI interface
+- Added short form `-c` option as alias for `--client` across all commands (install, uninstall, list)
+
+## [1.2.26] - 2025-09-11
+
+### Added
+- Interactive CLI commands: `smithery install`, `smithery uninstall`, and `smithery list` now support interactive client selection when no `--client` flag is provided
+- New `search [term]` command for interactive server discovery in the Smithery registry
+- Support for Codex client with TOML configuration format
+- Comprehensive installation test suite covering Target × Transport matrix (json, yaml, toml, command × stdio, http)
+
+### Changed
+- Improved client configuration pattern with better structure and validation
+- Updated command documentation and help text to reflect interactive capabilities
+
 ## [1.2.12] - 2025-01-05
 
 ### Changed

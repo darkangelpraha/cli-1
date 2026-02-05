@@ -1,19 +1,22 @@
-import chalk from "chalk"
-import { join } from "node:path"
-import { spawn, type ChildProcess } from "node:child_process"
-import { setupTunnelAndPlayground } from "../lib/dev-lifecycle"
-import { ensureApiKey } from "../utils/runtime"
-import { buildMcpServer } from "../lib/build"
 import { existsSync } from "node:fs"
-import { debug } from "../logger"
+import { join } from "node:path"
+import chalk from "chalk"
+import { DEFAULT_PORT } from "../constants"
+import { buildServer } from "../lib/build"
+import { setupTunnelAndPlayground } from "../lib/dev-lifecycle"
+import { createDevServer } from "../lib/dev-server"
+import { debug } from "../lib/logger"
+import { setupProcessLifecycle } from "../utils/process-lifecycle"
+import { ensureApiKey } from "../utils/runtime"
 
 interface DevOptions {
 	entryFile?: string
 	port?: string
 	key?: string
+	tunnel?: boolean
 	open?: boolean
 	initialMessage?: string
-	configFile?: string
+	minify?: boolean
 }
 
 export async function dev(options: DevOptions = {}): Promise<void> {
@@ -22,24 +25,23 @@ export async function dev(options: DevOptions = {}): Promise<void> {
 		const apiKey = await ensureApiKey(options.key)
 
 		const smitheryDir = join(".smithery")
-		const outFile = join(smitheryDir, "index.cjs")
-		const finalPort = options.port || "8181"
+		const outFile = join(smitheryDir, "bundle", "module.js")
+		const finalPort = options.port || DEFAULT_PORT.toString()
+		const shouldSetupTunnel = options.tunnel !== false
 
-		let childProcess: ChildProcess | undefined
+		let devServer: Awaited<ReturnType<typeof createDevServer>> | undefined
 		let tunnelListener: { close: () => Promise<void> } | undefined
 		let isFirstBuild = true
-		let isRebuilding = false
 
-		// Function to start the server process
+		// Function to start/restart the server using Miniflare
 		const startServer = async () => {
-			// Kill existing process
-			if (childProcess && !childProcess.killed) {
-				isRebuilding = true
-				childProcess.kill("SIGTERM")
-				await new Promise((resolve) => setTimeout(resolve, 100))
+			// If server exists, just reload it
+			if (devServer) {
+				await devServer.reload()
+				return
 			}
 
-			// Ensure the output file exists before starting the process (handles async fs write timing)
+			// Ensure the output file exists
 			await new Promise<void>((resolve) => {
 				if (existsSync(outFile)) {
 					return resolve()
@@ -52,73 +54,44 @@ export async function dev(options: DevOptions = {}): Promise<void> {
 				}, 50)
 			})
 
-			// Start new process with tsx loader so .ts imports work in runtime bootstrap
-			childProcess = spawn(
-				"node",
-				["--import", "tsx", join(process.cwd(), outFile)],
-				{
-					stdio: ["inherit", "pipe", "pipe"],
-					env: {
-						...process.env,
-						PORT: finalPort,
-					},
-				},
-			)
-
-			const processOutput = (data: Buffer) => {
-				const chunk = data.toString()
-				process.stdout.write(chunk)
+			// Display a user-friendly message on first start
+			if (isFirstBuild) {
+				console.log(chalk.dim("> Starting local development server..."))
 			}
 
-			childProcess.stdout?.on("data", processOutput)
-			childProcess.stderr?.on("data", (data) => {
-				const chunk = data.toString()
-				process.stderr.write(chunk)
-			})
-
-			childProcess.on("error", (error) => {
-				console.error(chalk.red("❌ Process error:"), error)
-				cleanup()
-			})
-
-			childProcess.on("exit", (code) => {
-				// Ignore exits during rebuilds - this is expected behavior
-				if (isRebuilding) {
-					isRebuilding = false
-					return
-				}
-
-				if (code !== 0 && code !== null) {
-					console.log(chalk.yellow(`⚠️  Process exited with code ${code}`))
-					cleanup()
-				}
+			// Start new server with Miniflare wrapper
+			devServer = await createDevServer({
+				port: Number.parseInt(finalPort, 10),
+				modulePath: outFile,
 			})
 
 			// Start tunnel and open playground on first successful start
 			if (isFirstBuild) {
-				console.log(chalk.green(`✅ Server starting on port ${finalPort}`))
-				setupTunnelAndPlayground(
-					finalPort,
-					apiKey,
-					options.open !== false,
-					options.initialMessage,
+				console.log(
+					chalk.dim(`> Server starting on port ${chalk.green(finalPort)}`),
 				)
-					.then(({ listener }) => {
-						tunnelListener = listener
-						isFirstBuild = false
-					})
-					.catch((error) => {
-						console.error(chalk.red("❌ Failed to start tunnel:"), error)
-					})
+				if (shouldSetupTunnel) {
+					setupTunnelAndPlayground(finalPort, apiKey, options.open !== false)
+						.then(({ listener }) => {
+							tunnelListener = listener
+							isFirstBuild = false
+						})
+						.catch((error) => {
+							console.error(chalk.red("× Failed to start tunnel:"), error)
+						})
+				} else {
+					isFirstBuild = false
+				}
 			}
 		}
 
 		// Set up build with watch mode
-		const buildContext = await buildMcpServer({
+		const buildContext = await buildServer({
 			outFile,
 			entryFile: options.entryFile,
-			configFile: options.configFile,
 			watch: true,
+			minify: false, // Always disable minification in dev mode
+			transport: "shttp",
 			onRebuild: () => {
 				startServer()
 			},
@@ -126,11 +99,16 @@ export async function dev(options: DevOptions = {}): Promise<void> {
 
 		// Handle cleanup on exit
 		const cleanup = async () => {
-			console.log(chalk.yellow("\n👋 Shutting down dev server..."))
+			console.log(chalk.yellow("\no/ Shutting down server..."))
 
 			// Stop watching
 			if (buildContext && "dispose" in buildContext) {
 				await buildContext.dispose()
+			}
+
+			// Close dev server
+			if (devServer) {
+				await devServer.close()
 			}
 
 			// Close tunnel
@@ -138,46 +116,19 @@ export async function dev(options: DevOptions = {}): Promise<void> {
 				try {
 					await tunnelListener.close()
 					debug(chalk.green("Tunnel closed"))
-				} catch (error) {
+				} catch (_error) {
 					debug(chalk.yellow("Tunnel already closed"))
 				}
 			}
-
-			// Kill child process
-			if (childProcess && !childProcess.killed) {
-				console.log(chalk.yellow("Stopping MCP server..."))
-				console.log(
-					`\n\n${chalk.rgb(
-						234,
-						88,
-						12,
-					)(
-						"Thanks for using Smithery!",
-					)}\n🚀 One-click cloud deploy: ${chalk.blue.underline(
-						"https://smithery.ai/new",
-					)}\n\n`,
-				)
-				childProcess.kill("SIGTERM")
-
-				// Force kill after 5 seconds
-				setTimeout(() => {
-					if (childProcess && !childProcess.killed) {
-						childProcess.kill("SIGKILL")
-					}
-				}, 5000)
-			}
-
-			process.exit(0)
 		}
 
-		// Set up signal handlers
-		process.on("SIGINT", cleanup)
-		process.on("SIGTERM", cleanup)
-
-		// Keep the process alive
-		await new Promise<void>(() => {})
+		// Set up process lifecycle management
+		setupProcessLifecycle({
+			cleanupFn: cleanup,
+			processName: "server",
+		})
 	} catch (error) {
-		console.error(chalk.red("❌ Dev server failed:"), error)
+		console.error(chalk.red("× Dev server failed:"), error)
 		process.exit(1)
 	}
 }

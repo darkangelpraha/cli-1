@@ -1,68 +1,23 @@
 import chalk from "chalk"
-import { debug } from "../logger"
+import { debug } from "./logger"
+import { createSmitheryClientSync } from "./smithery-client"
 
-export async function getTemporaryTunnelToken(apiKey: string): Promise<{
+async function getTemporaryTunnelToken(apiKey: string): Promise<{
 	authtoken: string
 	domain: string
 }> {
-	try {
-		const response = await fetch(
-			`${process.env.REGISTRY_ENDPOINT}/uplink/token`,
-			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${apiKey}`,
-				},
-			},
-		)
-
-		if (!response.ok) {
-			if (response.status === 401) {
-				throw new Error("Unauthorized: Invalid API key")
-			}
-			throw new Error(`Failed to get tunnel token: ${response.statusText}`)
-		}
-
-		return await response.json()
-	} catch (error) {
-		throw new Error(
-			`Failed to connect to Smithery API: ${
-				error instanceof Error ? error.message : error
-			}`,
-		)
-	}
-}
-
-export function detectPortFromOutput(output: string): string | null {
-	const patterns = [
-		/(?:localhost|127\.0\.0\.1):(\d+)/g,
-		/port\s+(\d+)/gi,
-		/running.*?(\d{4,5})/gi,
-		/server.*?(\d{4,5})/gi,
-		/http:\/\/.*?:(\d+)/gi,
-	]
-
-	for (const pattern of patterns) {
-		const match = pattern.exec(output)
-		if (match?.[1]) {
-			const port = Number.parseInt(match[1], 10)
-			if (port > 1000 && port < 65536) {
-				return match[1]
-			}
-		}
-	}
-	return null
+	const client = createSmitheryClientSync(apiKey)
+	return client.uplink.createToken()
 }
 
 export async function startTunnel(
 	port: string,
 	apiKey: string,
 ): Promise<{
-	listener: any
+	listener: { url: () => string | null; close: () => Promise<void> }
 	url: string
 }> {
-	debug(chalk.blue(`🚀 Starting tunnel for localhost:${port}...`))
+	debug(chalk.blue(`Starting tunnel for localhost:${port}...`))
 
 	// Get temporary token from Smithery backend
 	debug(chalk.gray("Getting tunnel credentials..."))
